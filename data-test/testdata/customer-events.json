@@ -1,0 +1,37 @@
+[
+  {
+    "customerId": "C001",
+    "accountId": "A001",
+    "name": "John Smith",
+    "dob": "2010-05-12",
+    "employeeId": "E100"
+  },
+  {
+    "customerId": "C002",
+    "accountId": "A002",
+    "name": "Mary Jones",
+    "dob": "1998-07-21",
+    "employeeId": null
+  },
+  {
+    "customerId": "C003",
+    "accountId": "A003",
+    "name": "Amit Kumar",
+    "dob": "2007-11-03",
+    "employeeId": "E200"
+  },
+  {
+    "customerId": "C004",
+    "accountId": "A004",
+    "name": "Emma Wilson",
+    "dob": "1989-04-18",
+    "employeeId": null
+  },
+  {
+    "customerId": "C005",
+    "accountId": "A005",
+    "name": "Noah Davis",
+    "dob": "2015-09-29",
+    "employeeId": "E300"
+  }
+]

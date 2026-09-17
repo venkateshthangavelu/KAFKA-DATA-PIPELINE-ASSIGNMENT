@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Customer Account Event",
+  "type": "object",
+  "required": [
+    "customerId",
+    "accountId",
+    "name",
+    "dob",
+    "employeeId"
+  ],
+  "properties": {
+    "customerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dob": {
+      "type": "string",
+      "format": "date"
+    },
+    "employeeId": {
+      "type": ["string", "null"]
+    }
+  },
+  "additionalProperties": false
+}

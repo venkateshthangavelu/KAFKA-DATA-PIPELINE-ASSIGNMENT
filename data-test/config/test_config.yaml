@@ -1,0 +1,21 @@
+kafka:
+  bootstrap_servers: "localhost:9092"
+  topic: "customer.account.events.v1"
+  group_id: "customer-account-test-group"
+  timeout_seconds: 30
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "customerdb"
+  user: "postgres"
+  password: "postgres"
+  table: "public.customer_account_profile"
+
+api:
+  base_url: "http://localhost:8080"
+  metrics_endpoint: "/api/metrics"
+
+validation:
+  expected_record_count: 5
+  wait_timeout_seconds: 60
