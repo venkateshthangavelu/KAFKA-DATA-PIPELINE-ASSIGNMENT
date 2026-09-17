@@ -8,21 +8,124 @@ The application flow is:
 
 Customer events -> Kafka topic -> Application consumer -> Transformation -> PostgreSQL -> Metrics API
 
-The framework does not build or modify the application. It validates the behavior from the tester's perspective.
+The framework does not build or modify the application. Instead, it validates the end-to-end behavior from the tester's perspective.
 
-## Goals
+## Objective
 
-- Load sample customer events from JSON
-- Publish them to Kafka
-- Consume them back from a test consumer group
-- Validate schema and payload quality
-- Wait for processing
-- Reconcile Kafka messages with PostgreSQL records
-- Validate business rules such as minor and employee flags
-- Check the metrics REST API
-- Produce an HTML test report
+The goal is to validate that customer data is correctly:
 
-## Project structure
+- generated from sample input events,
+- published to Kafka,
+- consumed and processed by the application,
+- written to PostgreSQL,
+- reconciled against expected business rules,
+- exposed by the metrics API,
+- reported through a simple HTML test report.
+
+## Scope
+
+This project intentionally stays small and easy to understand. It is not designed as a generic enterprise framework.
+
+Current scope:
+
+- 1 Kafka topic: customer.account.events.v1
+- 1 Kafka partition
+- 5 test messages
+- 1 PostgreSQL table: public.customer_account_profile
+- 1 main transformation
+- 1 raw archive file
+- 1 metrics REST API
+
+## Validation flow
+
+The test flow is:
+
+1. Read five test messages from JSON.
+2. Publish them to Kafka.
+3. Consume the messages using a separate test consumer group.
+4. Validate the JSON schema and message structure.
+5. Wait until the application processes the messages.
+6. Query PostgreSQL.
+7. Validate record count.
+8. Match Kafka records to database records.
+9. Validate field mappings.
+10. Independently calculate minor_flag.
+11. Independently calculate employee_flag.
+12. Validate the raw message archive.
+13. Call the metrics API.
+14. Validate the API response.
+15. Generate an HTML test report.
+
+The primary validation is source-to-target reconciliation.
+
+Example:
+
+```text
+Kafka customerId  = C001
+        |
+        v
+DB customer_id    = C001
+
+Kafka accountId   = A001
+        |
+        v
+DB account_id     = A001
+
+Kafka name        = John
+        |
+        v
+DB name           = John
+
+DOB
+        |
+        v
+minor_flag        = independently calculated expected value
+
+employeeId
+        |
+        v
+employee_flag     = independently calculated expected value
+```
+
+## Business rules used by the test
+
+The assignment defines minor_flag and employee_flag. If the exact business rules are not documented, these should be treated as assumptions.
+
+### Minor flag
+
+```text
+age < 18  -> Y
+age >= 18 -> N
+```
+
+The test calculates age itself from the date of birth.
+
+### Employee flag
+
+```text
+employeeId != null -> Y
+employeeId == null  -> N
+```
+
+The test calculates this value independently instead of calling the application transformation logic.
+
+## Test automation approach
+
+Python is a good fit for this small project because it allows the Kafka, database, and API checks to be implemented with minimal code.
+
+Main libraries:
+
+- pytest — test execution and assertions
+- pytest-html — HTML report generation
+- confluent-kafka — Kafka producer and consumer
+- psycopg2-binary — PostgreSQL connectivity
+- requests — REST API calls
+- jsonschema — JSON schema validation
+- PyYAML — configuration loading
+
+This project does not require pandas or a large enterprise framework for five records.
+
+## Repository structure
 
 ```text
 .
@@ -51,6 +154,56 @@ The framework does not build or modify the application. It validates the behavio
 └── .venv/
 ```
 
+## Python file responsibilities
+
+### tests/test_customer_account.py
+
+This is the main test file. It should contain the actual scenario logic, including:
+
+- loading test data,
+- producing Kafka messages,
+- consuming Kafka messages,
+- validating schema,
+- waiting for database processing,
+- querying PostgreSQL,
+- comparing source and target data,
+- computing expected flags,
+- validating API response,
+- generating the final report.
+
+### utils/kafka_utils.py
+
+This contains only the basic Kafka operations:
+
+- producer creation,
+- message production,
+- consumer creation,
+- message consumption.
+
+### utils/db_utils.py
+
+This contains the basic PostgreSQL access:
+
+- connection creation,
+- customer record retrieval,
+- record count checks.
+
+### testdata/customer-events.json
+
+This file contains the five sample messages used by the test.
+
+### testdata/customer-event-schema.json
+
+This file defines the expected message schema.
+
+### config/test_config.yaml
+
+This file stores environment-specific values such as Kafka, database, and API settings.
+
+### requirements.txt
+
+This file includes the minimum Python dependencies required for the test framework.
+
 ## Environment setup
 
 ### 1. Start Kafka and PostgreSQL
@@ -59,7 +212,7 @@ The framework does not build or modify the application. It validates the behavio
 docker compose up -d
 ```
 
-### 2. Create Python environment
+### 2. Create a Python environment
 
 ```bash
 cd data-test
@@ -74,393 +227,94 @@ pip install -r requirements.txt
 pytest -q --html=reports/customer_account_report.html
 ```
 
-Or use:
+Or use the helper script:
 
 ```bash
 bash run_tests.sh
 ```
 
-## Validations included
+## Configuration example
 
-- Kafka message count equals expected count
-- JSON schema validates successfully
-- PostgreSQL record count matches expected output
-- Source-to-target matching by customerId and accountId
-- `minor_flag` calculated independently
-- `employee_flag` calculated independently
-- Metrics API responds successfully
-- Duplicate/null checks for core fields
-
-## Client-facing summary
-
-This project is a compact, assignment-style data pipeline validation framework. It proves the end-to-end flow of customer data from Kafka into PostgreSQL and confirms that the application behavior matches the expected business rules with minimal complexity and easy maintainability.
-
-READ records from PostgreSQL
-
-ASSERT DB count = 5
-
-FOR each input message:
-    FIND matching DB record using customerId
-
-    ASSERT customerId matches
-    ASSERT accountId matches
-    ASSERT name matches
-
-    CALCULATE expected minor_flag
-    ASSERT DB minor_flag = expected value
-
-    CALCULATE expected employee_flag
-    ASSERT DB employee_flag = expected value
-
-CHECK raw archive
-
-CALL metrics API
-
-ASSERT API status = 200
-ASSERT topic is correct
-ASSERT message count is correct
-
-GENERATE test report
-```
-
----
-
-# 7. `utils/kafka_utils.py`
-
-This contains only basic Kafka operations.
-
-It should provide:
-
-- producer creation
-- message production
-- consumer creation
-- message consumption
-
-### Pseudocode
-
-```text
-FUNCTION create_producer:
-    CONNECT to Kafka
-    RETURN producer
-
-FUNCTION produce_messages(topic, messages):
-    CREATE producer
-
-    FOR each message:
-        convert message to JSON
-        publish message to topic
-
-    flush producer
-
-    RETURN number of messages
-
-FUNCTION consume_messages(topic, groupId, expectedCount):
-    CREATE consumer
-    USE separate test consumer group
-    SUBSCRIBE to topic
-
-    START timeout
-
-    WHILE received messages < expectedCount:
-        POLL Kafka
-
-        IF message received:
-            convert JSON to object
-            add to list
-
-        IF timeout reached:
-            STOP
-
-    CLOSE consumer
-
-    RETURN messages
-```
-
-No Kafka factory or Kafka abstraction layer is required.
-
----
-
-# 8. `utils/db_utils.py`
-
-This contains basic PostgreSQL access.
-
-### Pseudocode
-
-```text
-FUNCTION get_connection:
-    CONNECT to PostgreSQL
-    RETURN connection
-
-FUNCTION get_customer_records:
-    OPEN DB connection
-
-    EXECUTE:
-        SELECT customer_id,
-               account_id,
-               name,
-               minor_flag,
-               employee_flag
-        FROM public.customer_account_profile
-
-    RETURN rows
-
-FUNCTION get_record_count:
-    OPEN DB connection
-
-    EXECUTE:
-        SELECT COUNT(*)
-        FROM public.customer_account_profile
-
-    RETURN count
-```
-
-For this assignment, direct SQL/JDBC-style access is preferable to an ORM.
-
----
-
-# 9. `testdata/customer-events.json`
-
-Contains the five input messages.
-
-Example:
-
-```text
-C001 / A001 / John    / 2010-05-10 / null
-C002 / A002 / David   / 1990-08-20 / E100
-C003 / A003 / Sarah   / 2008-03-15 / null
-C004 / A004 / Michael / 1985-11-12 / E200
-C005 / A005 / Robert  / 1995-01-25 / null
-```
-
-The important point is that the data contains both:
-
-- minor/adult customers
-- employee/non-employee customers
-
-### Pseudocode
-
-```text
-JSON ARRAY
-
-message 1
-message 2
-message 3
-message 4
-message 5
-```
-
-No Java/Python object creation is necessary just to hold these five records.
-
----
-
-# 10. `testdata/customer-event-schema.json`
-
-Contains the JSON schema supplied by the assignment.
-
-### Pseudocode
-
-```text
-DEFINE required fields:
-    customerId
-    accountId
-    name
-    dateOfBirth
-
-DEFINE optional field:
-    employeeId
-
-DEFINE date format:
-    YYYY-MM-DD
-
-DO NOT allow additional fields
-```
-
-The main test loads this schema and validates every consumed message.
-
----
-
-# 11. `config/test_config.yaml`
-
-Contains environment-specific values.
-
-Example:
-
-```text
+```yaml
 kafka:
-    bootstrap server
-    topic
-    test consumer group
+  bootstrap_servers: "localhost:9092"
+  topic: "customer.account.events.v1"
+  group_id: "customer-account-test-group"
 
 database:
-    host
-    port
-    database
-    username
-    password
+  host: "localhost"
+  port: 5432
+  database: "customerdb"
+  user: "postgres"
+  password: "postgres"
 
 api:
-    base URL
+  base_url: "http://localhost:8080"
+  metrics_endpoint: "/api/metrics"
 
-test:
-    expected message count = 5
+validation:
+  expected_record_count: 5
 ```
 
-### Pseudocode
+## Important testing notes
+
+### Asynchronous processing
+
+Kafka processing is asynchronous. A fixed sleep is not the best approach. Instead, the test should poll the database until the expected count is reached or a timeout occurs.
+
+Example logic:
 
 ```text
-READ YAML
+PRODUCE messages
 
-GET Kafka configuration
-GET database configuration
-GET API configuration
-GET expected message count
-```
-
-No configuration framework is required.
-
----
-
-# 12. `requirements.txt`
-
-Contains only the required Python dependencies.
-
-```text
-pytest
-pytest-html
-confluent-kafka
-psycopg2-binary
-requests
-jsonschema
-PyYAML
-```
-
-### Pseudocode
-
-```text
-INSTALL dependencies from requirements.txt
-```
-
----
-
-# 13. `README.md`
-
-Documents:
-
-- prerequisites
-- how to install dependencies
-- Kafka/database/API configuration
-- how to run tests
-- assumptions
-- expected result
-- limitations
-
-### Pseudocode
-
-```text
-Explain setup
-Explain configuration
-Explain test command
-Explain assumptions
-Explain report location
-```
-
----
-
-# 14. Python Test Execution
-
-Example:
-
-```text
-pytest -v --html=reports/test-report.html --self-contained-html
-```
-
-The result is an HTML report.
-
-No custom reporting utility is necessary.
-
----
-
-# 15. Important Python Testing Detail – Asynchronous Processing
-
-Kafka processing is asynchronous.
-
-Therefore this is not ideal:
-
-```text
-produce messages
-sleep 5 seconds
-query database
-```
-
-A better simple approach is:
-
-```text
-produce messages
-
-WHILE DB count < 5:
+WHILE DB count < expected count:
     wait briefly
     check DB count
-
-IF count becomes 5:
-    continue
 
 IF timeout reached:
     fail test
 ```
 
-This is enough.
+### Kafka consumer groups
 
-We do not need a generic retry framework.
+The application uses its own consumer group. The test should use a separate group to avoid competing for the same messages.
 
----
-
-# 16. Important Kafka Test Detail
-
-The application uses:
+Recommended pattern:
 
 ```text
-customer-account-consumer-group
+application group: customer-account-consumer-group
+test group: customer-account-test-group
 ```
 
-The test should use:
-
-```text
-customer-account-test-group
-```
-
-The reason is to prevent the application and test consumer from competing for messages.
-
-For repeated runs, a unique test consumer group can be used:
+For repeated runs, use a unique group name such as:
 
 ```text
 customer-account-test-<timestamp>
 ```
 
-This prevents old offsets from interfering with a new test.
+### Database cleanup for repeated runs
 
----
+Repeated test execution may create duplicate rows. For a small assignment, one of these approaches is acceptable:
 
-# 17. Important Database Test Detail
-
-Repeated test execution can create duplicate database rows.
-
-For this small assignment, use one of these simple approaches:
-
-```text
-Option 1:
-Clean test table before test
-
-OR
-
-Option 2:
-Use unique test customer IDs and validate only those records
-
-OR
-
-Option 3:
-Use a dedicated test database
-```
-
-The choice depends on the available test environment.
+- clean the target test table before the test,
+- use unique test customer IDs, or
+- use a dedicated test database.
 
 Do not perform uncontrolled cleanup on production-like data.
+
+## Client-facing summary
+
+This project is a compact, assignment-style data pipeline validation framework. It proves the end-to-end flow of customer data from Kafka into PostgreSQL and verifies that the application's behavior matches the expected business rules with minimal complexity and easy maintainability.
+
+## Expected result
+
+A successful test run should confirm that:
+
+- all messages were produced,
+- all messages were consumed,
+- the JSON schema passed,
+- PostgreSQL contains the expected rows,
+- field values match source data,
+- minor_flag and employee_flag are correct,
+- the metrics API responds successfully,
+- the HTML report is generated.
